@@ -5,7 +5,7 @@
 
 import os
 import sys
-sys.path.insert(0,"../")
+#sys.path.insert(0,"../")
 #sys.path.insert(0, "../beta_mining/")
 import pandas as pd
 import pkgutil
@@ -15,11 +15,12 @@ import yaml
 import shutil
 import signal
 import datetime
-from pprint import pprint
 from pathlib import Path
 from argparse import ArgumentParser
 
-import beta_mining
+#directory = Path(__file__)
+#sys.path.append(str(directory.parent.parent))
+#import beta_mining
 from beta_mining import beta_mining_algorithm
 from beta_mining import beta_mining_functions
 

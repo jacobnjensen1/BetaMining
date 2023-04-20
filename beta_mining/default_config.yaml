@@ -7,7 +7,7 @@ input_filepath: ../input/
 # The filepath to the directory where results should be saved.
 output_filepath: ../output/
 
-# Filepath to a custom .json file with definitions of structures. Use `Null` if you wish to use the default .json included in the beta_mining module.
+# Filepath to a custom .json file with definitions of structures. Use `Null` if you wish to use the default (`structure_dictionary.json`) included in the beta_mining module.
 custom_json: Null
 
 # units in which to calculate dihedral angles. Enter "radians" or "degrees"

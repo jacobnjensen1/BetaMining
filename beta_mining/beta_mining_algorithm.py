@@ -26,8 +26,8 @@ import glob
 from pathlib import Path
 import importlib.resources
 
-import beta_mining
-from beta_mining import beta_mining_algorithm
+#import beta_mining
+#from beta_mining import beta_mining_algorithm
 from beta_mining import beta_mining_functions
 
 

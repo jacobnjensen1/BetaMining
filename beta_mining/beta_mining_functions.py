@@ -25,9 +25,9 @@ import shutil
 import glob
 from pathlib import Path
 
-import beta_mining
-from beta_mining import beta_mining_algorithm
-from beta_mining import beta_mining_functions
+#import beta_mining
+#from beta_mining import beta_mining_algorithm
+#from beta_mining import beta_mining_functions
 
 def polymer_df(pdb_meta_dict, pdb_object):
   """returns a dataframe of polymer metadata and residue information from the

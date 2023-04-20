@@ -5,7 +5,7 @@ results_prefix: default
 input_filepath: ../input/
 
 # The filepath to the directory where results should be saved.
-output_filepath: ../output/test_dir/
+output_filepath: ../test_output/
 
 # Filepath to a custom .json file. Use `Null` if you wish to use the default .json included in the beta_mining module.
 custom_json: Null
@@ -105,3 +105,6 @@ timestamp: 20226816357_
 timestamp: 202268163916_
 
 timestamp: 202268165142_
+timestamp: 202342013852_
+
+timestamp: 202342013936_
