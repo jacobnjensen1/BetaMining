@@ -64,20 +64,34 @@ def analyze_structure(filename, config, json, output_dictionary):
     structure_symbols_string = "".join(secondary_structure_series)
     structure_length = len(structure_symbols_string)
 
+    #print(structure_symbols_string)
+
     # generate dataframe of entire protein
     residue_df = beta_mining_functions.polymer_df(meta_dictionary, af_object)
+
     residue_df = pd.merge(residue_df, dihedral_df, on = "residue_number", how = "left")
+
+    #add plddt column from residue_df to dihedral_df
+    #print(dihedral_df)
+    dihedral_df = dihedral_df.join(residue_df["plddt"])
+    #print(dihedral_df)
+
     residue_df["structure_symbol"] = secondary_structure_series
     if output_dictionary["proteome_aa"] != False: # save complete protein dataframe if indicated in config YAML
         output_filename = config["output_filepath"] + config["results_prefix"] + meta_dictionary["accession"] + "_f" + str(meta_dictionary["fragment"]) + "_" + meta_dictionary["depo_date"].lower() + config["output_filename"]
 
         residue_df.to_csv(output_filename, index = False)
-
+        #print(residue_df[["plddt"]].to_string(index=False))
+        #residue_df absolutely has the plddt
+        #the number of plddt entries and residues is the same, as they should be.
+        #print(len(residue_df.index))
+        #print(len(residue_df[["plddt"]]))
 
     # look for regex matches in the secondary structure string for each type of target
     for target in json["target_region_features"]:
         if target["name"] in config["target_names"]:
             compiled_regex = re.compile(target["regex"])
+            #print(structure_symbols_string)
             targets_found = re.finditer(compiled_regex, structure_symbols_string)
             fasta_fields = [
                             target["name"],
@@ -90,11 +104,13 @@ def analyze_structure(filename, config, json, output_dictionary):
                             "fragment " + str(meta_dictionary["fragment"])
                         ]
             regex_flank = target["regex_flank"]
-            for match_obj in targets_found:
+            for i, match_obj in enumerate(targets_found):
+                print(f"Site {i + 1}, residues {match_obj.span()[0] + 1}-{match_obj.span()[1] + 1}:")
                 if beta_mining_functions.attribute_filter(target, match_obj, dihedral_df) == False:
-                    print("attribute_filter was False!")
+                    print("attribute_filter returned False!")
                     continue
                 else:
+                    print("attribute_filter returned True!")
                     # these values are the 0 index of residues for slicing
                     res_idx_start = max(0, match_obj.span()[0] - regex_flank)
                     res_idx_end = min(structure_length - 1, match_obj.span()[1] + regex_flank)
@@ -127,7 +143,8 @@ def analyze_structure(filename, config, json, output_dictionary):
                         for field in config["additional_attributes"].keys():
                             for funct_name in config["additional_attributes"][field]:
                                 funct = getattr(pd.Series, funct_name)
-                                attr_value = funct(residue_df[field][residue_df["residue_number"].isin([*range(match_obj.span()[0] + 1, match_obj.span()[1]+ 2 )])])
+                                
+                                attr_value = funct(residue_df[field][residue_df["residue_number"].isin([*range(match_obj.span()[0] + 1, match_obj.span()[1]+ 2)])])
                                 hit_line.append(attr_value)
                         hit_line = list(map(str, hit_line))
                         output_dictionary["hits_aa"].write(",".join(hit_line) + "\n")

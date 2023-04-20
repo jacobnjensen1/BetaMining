@@ -51,14 +51,12 @@ def generate_yaml(target_directory = os.getcwd(), prefix = "generated_"):
     with importlib.resources.path("beta_mining", "default_config.yaml") as p:
         shutil.copy(p, target_directory)
 
-
 def main():
     parser = ArgumentParser("beta_mining", description = script_description)
     parser.add_argument("-c", "--config", help = "The config file (YAML format) to use for a run.", type = str, default = "default_config.yaml")
     parser.add_argument("-f", "--filepath", help = "If running beta_mining in default mode, indicate path to .pdb files here. A default YAML will be generated and a timestamp-based prefix will be used for all outputs.", type = str, default = "no_input")
     parser.add_argument("-d", "--defaults", help = "Generate a default YAML config file in the current working directory.", action = "store_true")
     args = parser.parse_args()
-
 
     now = datetime.datetime.now()
     timestamp = "".join([str(now.year), str(now.month), str(now.day), str(now.hour), str(now.minute), str(now.second), "_"])
@@ -109,12 +107,6 @@ def main():
 
     # Run the main algorithm
     beta_mining_algorithm.main(settings)
-
-
-
-
-
-
 
 if __name__ == "__main__":
     # Register Ctrl-C, Ctrl-Z signals

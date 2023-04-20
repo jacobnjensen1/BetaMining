@@ -49,6 +49,7 @@ def polymer_df(pdb_meta_dict, pdb_object):
   df = df.reindex(columns = column_list_order)
   if pdb_meta_dict["full_title"].lower().find("alphafold") != -1:
       df = df.rename(columns = {"b_factor": "plddt"})
+  #print(df)
   return df
 
 
@@ -81,7 +82,7 @@ def calculation_df(prody_model, residue_offset, secondary_structures, units = "d
       twist = psi - abs(phi)
       dihedrals_dictionary = {"phi": phi, "psi": psi, "omega": omega}
     except:
-      phi, psi, omega, twist = "", "", "", ""
+      phi, psi, omega, twist = pd.NA, pd.NA, pd.NA, pd.NA 
       continue
     else:
       for structure in secondary_structures:
@@ -109,6 +110,7 @@ def calculation_df(prody_model, residue_offset, secondary_structures, units = "d
                                          "secondary_structure"])
 
   secondary_structure_dictionary["twist"] = dict(zip(df.residue_number, df.twist))
+  #print(secondary_structure_dictionary)
   return df, symbol_series, secondary_structure_dictionary
 
 def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, target_list):
@@ -147,12 +149,14 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
             if "secondary_structures" in contact_type:
               array_idx = []
               for structure in contact_type["secondary_structures"]:
+                #print(structure)
                 array_idx.extend(residue_features_dictionary[structure])
               array_idx = list(np.asarray(list(set(residue_numbers_list) - set(array_idx))) - 1)
               contact_matrix[:,array_idx] = 0
             if contact_type["target_name"] != ["all"]:
               target_idx = []
               for label in contact_type["target_name"]:
+                #print(label)
                 target_idx.extend(residue_features_dictionary[label])
               target_idx = list(np.asarray(list(set(residue_numbers_list) - set(target_idx))) - 1)
               target_matrix = contact_matrix
@@ -167,9 +171,59 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
   contacts_dataframe = coords_df[column_names]
   return contacts_dataframe, series_mask_dictionary
 
+def handle_flank(flank_json, match_object, dihedral_dataframe):
+  """returns a boolean value indicating whether a regex match should be passed
+  based on attributes of the flanking regions. The only attribute will only be the ratio of
+  confidence scores (plddt) for now.
+
+  Keyword arguments:
+  flank_json -- only the section of the json dictionary which defines flank_confidence
+  match_object -- the match object from the regex search being queried
+  dihedral_dataframe -- the dataframe containing the calculated dihedral angles and other attributes for the protein
+  """
+  flank_size = flank_json["size"]
+  use_first_flank = True 
+  use_second_flank = True
+  if match_object.span()[0] + 1 - flank_size <= 0:
+    #print("not using first")
+    use_first_flank = False
+  if match_object.span()[1] + 2 + flank_size >= max(dihedral_dataframe.loc[:, "residue_number"]):
+    #print("not using second")
+    use_second_flank = False
+  if use_first_flank == False and use_second_flank == False:
+    print("Both flanks contained the terminus, but that might be fine")
+    return True
+
+  flank_df = pd.DataFrame(columns=dihedral_dataframe.columns) #init empty df, fill in next blocks
+  if use_first_flank:
+    flank_df = pd.concat([flank_df, dihedral_dataframe[dihedral_dataframe["residue_number"].isin([*range(match_object.span()[0] + 1 - flank_size , match_object.span()[0] + 1)])]])
+  if use_second_flank:
+    flank_df = pd.concat([flank_df, dihedral_dataframe[dihedral_dataframe["residue_number"].isin([*range(match_object.span()[1] + 2, match_object.span()[1] + 2 + flank_size)])]])
+
+  if "mean_ratio" in flank_json:
+    ratio_min = flank_json["mean_ratio"][0]
+    ratio_max = flank_json["mean_ratio"][1]
+    
+    in_region_mean = pd.Series.mean(dihedral_dataframe["plddt"][dihedral_dataframe["residue_number"].isin([*range(match_object.span()[0] + 1, match_object.span()[1] + 2)])])
+    flank_mean = pd.Series.mean(flank_df.loc[:, "plddt"]) 
+    conf_ratio = flank_mean / in_region_mean
+
+    if not (ratio_min <= conf_ratio <= ratio_max):
+      print(f"Failed because the ratio was {conf_ratio} and needed to be between {ratio_min} and {ratio_max}")
+      return False
+  if "mean" in flank_json:
+    flank_mean = pd.Series.mean(flank_df.loc[:, "plddt"]) 
+    mean_min = flank_json["mean"][0]
+    mean_max = flank_json["mean"][1]
+
+    if not (mean_min <= flank_mean <= mean_max):
+      print(f"Failed because the mean flank pLDDT was {flank_mean} and needed to be between {mean_min} and {mean_max}")
+      return False
+  return True
+
 def attribute_filter(target_json, match_object, dihedral_dataframe):
   """returns a boolean value indicating whether a regex match should be passed
-  (True) or failed (False) based on the twist values of the residue range
+  (True) or failed (False) based on various qualities of the residue range
 
   Keyword arguments:
   target_json -- the target motif attribute section of the features .json
@@ -177,17 +231,44 @@ def attribute_filter(target_json, match_object, dihedral_dataframe):
   dihedral_dataframe -- the dataframe containing the calculated dihedral angles and other attributes for the protein
   """
   available_calculation_list = list(dihedral_dataframe.columns)
+  #print(available_calculation_list)
   for condition in ["exclude", "include"]: # the function immediately returns False if any part fails, so exclude comes first no matter what the order is in the YAML config
     for attribute in target_json[condition]:
       if attribute in available_calculation_list:
         for func_name in target_json[condition][attribute]:
           func = getattr(pd.Series, func_name)
-          if target_json[condition][attribute][func_name][0] <= func(dihedral_dataframe[attribute][dihedral_dataframe["residue_number"].isin([*range(match_object.span()[0] + 1, match_object.span()[1] + 2)])]) <= target_json[condition][attribute][func_name][1]:
+          attribute_range_min = target_json[condition][attribute][func_name][0]
+          attribute_range_max = target_json[condition][attribute][func_name][1]
+          attribute_value = func(dihedral_dataframe[attribute][dihedral_dataframe["residue_number"].isin([*range(match_object.span()[0] + 1, match_object.span()[1] + 2)])])
+          #print(attribute_range_min) 
+          #print(attribute_value) 
+          #print(attribute_range_max)
+          if attribute_range_min <= attribute_value <= attribute_range_max:
             if condition == "exclude":
+              print(f"Failed because the {attribute} was {attribute_value} and needed to be between {attribute_range_min} and {attribute_range_max}")
               return False
           else:
             if condition == "include":
+              print(f"Failed because the {attribute} was {attribute_value} and needed to be between {attribute_range_min} and {attribute_range_max}")
               return False
+      elif attribute == "flank_plddt":
+        if not handle_flank(target_json[condition][attribute], match_object, dihedral_dataframe):
+          #print statements are in handle_flank
+          return False
+      elif attribute == "size":
+        size_range_min = target_json[condition][attribute][0]
+        size_range_max = target_json[condition][attribute][1]
+        size = (match_object.span()[1] + 2) - (match_object.span()[0] + 1)
+        if condition == "exclude":
+          if (size_range_min <= size <= size_range_max):
+            print(f"Failed because the size was {size} and couldn't be between {size_range_min} and {size_range_max}")
+            return False
+        if condition == "include":
+          if not (size_range_min <= size <= size_range_max):
+            print(f"Failed because the size was {size} and needed to be between {size_range_min} and {size_range_max}")
+            return False
+            
+
   return True
 
 def attribute_calculations(config_add_attr, residue_range, poly_dataframe):

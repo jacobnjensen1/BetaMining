@@ -76,7 +76,7 @@
 	"target_region_features": [{
 		"name": "beta-run",
 		"regex":
-				"(?!.*I)[Bb]{3,}(?<=B.)(?:.{0,6}(?=.*B)[Bb]{3,})+"
+			"[Bb]{2,}(?<=B.)(?:[^I]{0,6}(?=.*B)[Bb]{2,})+"
 			,
 		"regex_flank": 5,
 		"include": {
@@ -93,6 +93,11 @@
 			}],
 			"twist": {
 				"mean": [-5, 30]
+			},
+			"flank_plddt": {
+				"size": 10,
+				"mean_ratio": [0, 0.9],
+				"mean": [0, 40]
 			}
 		},
 		"exclude": {
@@ -103,7 +108,8 @@
 				"excluded_flank": 2,
 				"mask_symbol": "I",
 				"target_name": ["all"]
-			}]
+			}],
+			"size": [0, 10]
 		}
 	},
 	{
