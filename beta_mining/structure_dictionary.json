@@ -76,7 +76,7 @@
 	"target_region_features": [{
 		"name": "beta-run",
 		"regex":
-			"[Bb]{2,}(?<=B.)(?:[^I]{0,6}(?=.*B)[Bb]{2,})+"
+			"[Bb]{2,}(?<=B.)(?:[^I]{1,8}(?=.*B)[Bb]{2,})+"
 			,
 		"regex_flank": 5,
 		"include": {
@@ -91,13 +91,12 @@
 				"mask_symbol": "B",
 				"target_name": ["beta-sheet"]
 			}],
-			"twist": {
-				"mean": [-5, 30]
-			},
 			"flank_plddt": {
 				"size": 10,
-				"mean_ratio": [0, 0.9],
-				"mean": [0, 40]
+				"mean_ratio": [0, 0.9]
+			},
+			"plddt": {
+				"mean": [0, 80]
 			}
 		},
 		"exclude": {

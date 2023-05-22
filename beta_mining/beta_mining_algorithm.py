@@ -117,15 +117,21 @@ def analyze_structure(filename, config, json, output_dictionary):
 
                     # these values are the 1 index of residues for output
                     res_start = res_idx_start + 1
-                    res_end = res_idx_start + 1
+                    res_end = res_idx_end + 1
 
                     # sequences of amino acids and structures
                     aa_sequence = "".join(af_sequence[res_idx_start:res_idx_end])
                     ss_sequence = structure_symbols_string[res_idx_start:res_idx_end]
 
+                    #TODO: make flank output official option
+                    #aa_seq_with_flank = "".join(af_sequence[res_idx_start-20:res_idx_end+20])
+
                     if output_dictionary["hits_fasta"] != False:
                         fasta_header = ">" + "|".join(fasta_fields) + "|residues " + str(res_start) + "-" + str(res_end)
                         output_dictionary["hits_fasta"].write(fasta_header + "\n" + aa_sequence + "\n")
+
+                        #flank_fasta_header = f">includes flank for {fasta_fields[2]}, positions {res_idx_start} - {res_idx_end}"
+                        #output_dictionary["hits_fasta"].write(flank_fasta_header + "\n" + aa_seq_with_flank + "\n")
                     if output_dictionary["hits_aa"] != False:
                         hit_line = [target["name"],
                             meta_dictionary["database"],
