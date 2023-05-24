@@ -7,6 +7,9 @@ input_filepath: ../input/
 # The filepath to the directory where results should be saved.
 output_filepath: ../output/
 
+# Whether per residue data should be output for each input file. If True, each protein will get its own output file, which is not recommended for extremely large datasets.
+per_residue_output: True
+
 # Filepath to a custom .json file with definitions of structures. Use `Null` if you wish to use the default (`structure_dictionary.json`) included in the beta_mining module.
 custom_json: Null
 

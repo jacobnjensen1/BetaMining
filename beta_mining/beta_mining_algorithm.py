@@ -41,7 +41,13 @@ def analyze_structure(filename, config, json, output_dictionary):
     output_dictionary -- dictionary of output files to generate
     """
     # create ProDy model, meta information dictionary, BioPandas Dataframe and AA sequence list
-    model, meta_dictionary, af_object, af_sequence = beta_mining_functions.create_model_metainfo(filename)
+    result = beta_mining_functions.create_model_metainfo(filename)
+    if result != None:
+      model, meta_dictionary, af_object, af_sequence = result
+    else:
+      return None
+
+    #model, meta_dictionary, af_object, af_sequence = beta_mining_functions.create_model_metainfo(filename)
 
     # create the dataframe of dihedral angles, pandas series of secondary structures, and a dictionary with secondary structures as keys and a list of residue numbers as values.
     dihedral_df, secondary_structure_series, secondary_structure_reference = beta_mining_functions.calculation_df(model, meta_dictionary["fragment_offset"], json["secondary_structures"], config["units"])
@@ -80,7 +86,9 @@ def analyze_structure(filename, config, json, output_dictionary):
     if output_dictionary["proteome_aa"] != False: # save complete protein dataframe if indicated in config YAML
         output_filename = config["output_filepath"] + config["results_prefix"] + meta_dictionary["accession"] + "_f" + str(meta_dictionary["fragment"]) + "_" + meta_dictionary["depo_date"].lower() + config["output_filename"]
 
-        residue_df.to_csv(output_filename, index = False)
+        #print(config["per_residue_output"])
+        if config["per_residue_output"]:
+          residue_df.to_csv(output_filename, index = False)
         #print(residue_df[["plddt"]].to_string(index=False))
         #residue_df absolutely has the plddt
         #the number of plddt entries and residues is the same, as they should be.
@@ -103,7 +111,7 @@ def analyze_structure(filename, config, json, output_dictionary):
                             meta_dictionary["depo_date"],
                             "fragment " + str(meta_dictionary["fragment"])
                         ]
-            regex_flank = target["regex_flank"]
+            fasta_flank = target["fasta_flank"]
             for i, match_obj in enumerate(targets_found):
                 print(f"Site {i + 1}, residues {match_obj.span()[0] + 1}-{match_obj.span()[1] + 1}:")
                 if beta_mining_functions.attribute_filter(target, match_obj, dihedral_df) == False:
@@ -112,26 +120,24 @@ def analyze_structure(filename, config, json, output_dictionary):
                 else:
                     print("attribute_filter returned True!")
                     # these values are the 0 index of residues for slicing
-                    res_idx_start = max(0, match_obj.span()[0] - regex_flank)
-                    res_idx_end = min(structure_length - 1, match_obj.span()[1] + regex_flank)
+                    res_idx_start = max(0, match_obj.span()[0] - fasta_flank)
+                    res_idx_end = min(structure_length - 1, match_obj.span()[1] + fasta_flank)
 
                     # these values are the 1 index of residues for output
                     res_start = res_idx_start + 1
                     res_end = res_idx_end + 1
+                    abs_res_start = meta_dictionary["fragment_offset"] + res_start
+                    abs_res_end = meta_dictionary["fragment_offset"] + res_end
 
                     # sequences of amino acids and structures
                     aa_sequence = "".join(af_sequence[res_idx_start:res_idx_end])
                     ss_sequence = structure_symbols_string[res_idx_start:res_idx_end]
 
-                    #TODO: make flank output official option
-                    #aa_seq_with_flank = "".join(af_sequence[res_idx_start-20:res_idx_end+20])
-
                     if output_dictionary["hits_fasta"] != False:
-                        fasta_header = ">" + "|".join(fasta_fields) + "|residues " + str(res_start) + "-" + str(res_end)
+                        fasta_header = ">" + "|".join(fasta_fields) + "|residues " + \
+                          str(res_start) + "-" + str(res_end) + "|abs_residues " + str(abs_res_start) + "-" + str(abs_res_end)
                         output_dictionary["hits_fasta"].write(fasta_header + "\n" + aa_sequence + "\n")
 
-                        #flank_fasta_header = f">includes flank for {fasta_fields[2]}, positions {res_idx_start} - {res_idx_end}"
-                        #output_dictionary["hits_fasta"].write(flank_fasta_header + "\n" + aa_seq_with_flank + "\n")
                     if output_dictionary["hits_aa"] != False:
                         hit_line = [target["name"],
                             meta_dictionary["database"],
@@ -220,7 +226,7 @@ def main(config_settings):
     if os.path.isdir(output_path) == False:
         os.mkdir(output_path)
     file_list = glob.glob(input_path + "/**.pdb*", recursive = True)
-    print(file_list)
+    #print(file_list)
     file_number = 1
     file_total = len(file_list)
     for file in file_list:

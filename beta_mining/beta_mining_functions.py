@@ -24,6 +24,7 @@ import gzip
 import shutil
 import glob
 from pathlib import Path
+import traceback
 
 #import beta_mining
 #from beta_mining import beta_mining_algorithm
@@ -150,14 +151,17 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
               array_idx = []
               for structure in contact_type["secondary_structures"]:
                 #print(structure)
-                array_idx.extend(residue_features_dictionary[structure])
+                #print(residue_features_dictionary)
+                if structure in residue_features_dictionary:
+                  array_idx.extend(residue_features_dictionary[structure])
               array_idx = list(np.asarray(list(set(residue_numbers_list) - set(array_idx))) - 1)
               contact_matrix[:,array_idx] = 0
             if contact_type["target_name"] != ["all"]:
               target_idx = []
               for label in contact_type["target_name"]:
                 #print(label)
-                target_idx.extend(residue_features_dictionary[label])
+                if label in residue_features_dictionary:
+                  target_idx.extend(residue_features_dictionary[label])
               target_idx = list(np.asarray(list(set(residue_numbers_list) - set(target_idx))) - 1)
               target_matrix = contact_matrix
               target_matrix[array_idx,:] = 0
@@ -281,13 +285,104 @@ def attribute_calculations(config_add_attr, residue_range, poly_dataframe):
     """
     pass
 
+def parse_pdb_header_custom(pdb_file):
+  """This function will handle cases where the accession id of a protein is 10 characters long.
+  In this case, ProDy will fail to parse the header.
+  This function will return a dictionary identical to what would be in meta_dictionary.
+  """
+  #database, idcode, accession, full_name, full_title, depo_date, fragment, fragment_offset, organism_scientific, organism_taxid
+  meta_dictionary = {"database": None,
+                     "id_code": None,
+                     "accession": None,
+                     "full_name": None,
+                     "full_title": None,
+                     "depo_date": None,
+                     "fragment": None,
+                     "fragment_offset": None,
+                     "organism_scientific": None,
+                     "organism_taxid": None}
+  DBREF = {
+    "GB": "GenBank",
+    "PDB": "PDB",
+    "UNP": "UniProt",
+    "NORINE": "Norine",
+    "UNIMES": "UNIMES",
+    "EMDB": "EMDB"
+  }
+
+  if pdb_file.endswith(".gz"):
+    fileHandle = gzip.open(pdb_file, "rt")
+  else:
+    fileHandle = open(pdb_file)
+  title_list = []
+  for line in fileHandle:
+    if line.startswith("HEADER"):
+      #last portion of HEADER line
+      meta_dictionary["depo_date"] = line.strip().split()[-1]
+
+    if line.startswith("TITLE"):
+      #Remove starting stuff, which includes an int if not the first row,
+      #put in list, join at the end
+      if len(title_list) > 0:
+        title_list.append(" ".join(line.strip().split()[2:]))
+      else:
+        title_list.append(" ".join(line.strip().split()[1:]))
+
+    if line.startswith("COMPND"):
+      #if "MOL_ID" in line:
+        #the pdb definition says this is correct, but our usage of 'fragment' is different
+        #split on whitespace, get last element, remove semicolon
+        #meta_dictionary["fragment"] = line.strip().split()[-1][:-1]
+      if "MOLECULE" in line:
+        #split on colon and get everything after MOLECULE:, 
+        #join back together with colon in case one appears in name
+        #remove bordering whitespace and trailing semicolon
+        meta_dictionary["full_name"] = ":".join(line.split(":")[1:]).strip(" ;\n")
+
+    if line.startswith("SOURCE"):
+      if "ORGANISM_SCIENTIFIC" in line:
+        #split on colon to get everything after ORGANISM_SCIENTIFIC:,
+        #join together with colon, remove trailing semicolon and any bordering whitespace
+        meta_dictionary["organism_scientific"] = ":".join(line.strip().split(":")[1:]).strip(" ;\n")
+      if "ORGANISM_TAXID" in line:
+        meta_dictionary["organism_taxid"] = ":".join(line.strip().split(":")[1:]).strip(" ;\n")
+
+    if line.startswith("DBREF"):
+      line = line.strip().split()
+      meta_dictionary["database"] = DBREF[line[5]]
+      meta_dictionary["accession"] = line[6]
+      meta_dictionary["id_code"] = line[7]
+      meta_dictionary["fragment_offset"] = int(line[8]) - 1
+
+  #This calculation works for pdbs from the alphafold db, where they shift the start of a fragment by 200aa.
+  #This might need to be changed if a different source is used.
+  meta_dictionary["fragment"] = (meta_dictionary["fragment_offset"] // 200) + 1
+  meta_dictionary["full_title"] = " ".join(title_list)
+
+
+  #print(meta_dictionary)
+
+  fileHandle.close()
+  return meta_dictionary
+
 def create_model_metainfo(pdb_file):
     """returns a ProDy model and a dictionary of meta information about a protein, taken from the PDB file header. Also returns the amino acid sequence as a list of 1-letter codes, and a Pandas dataframe of atomic coordinates.
 
     Keyword arguments:
     pdb_file -- the PDB structure file
     """
-    model, pdb_head = prody.parsePDB(pdb_file, header=True, model=1, meta=True)
+    meta_dictionary = None
+    if len(pdb_file.split("-")[1]) == 10:
+      #if the accesssion is 10 characters (allowed since ~2014), ProDy will fail to parse the header
+      meta_dictionary = parse_pdb_header_custom(pdb_file)
+      model = prody.parsePDB(pdb_file, header=False, model=1, meta=True)
+    else:
+      try:
+        model, pdb_head = prody.parsePDB(pdb_file, header=True, model=1, meta=True)
+      except Exception:
+        #print(traceback.format_exc())
+        print("Prody failed, skipping this protein")
+        return None
     # using BioPandas to get matrix of PDB values and convert sequence to single letter
     af_object = PandasPdb().read_pdb(pdb_file).df["ATOM"]
     af_sequence = list(PandasPdb().read_pdb(pdb_file).amino3to1()["residue_name"])
@@ -299,18 +394,22 @@ def create_model_metainfo(pdb_file):
     else:
         bio_pdb = p.get_structure("XXXX", pdb_file)
 
-    meta_dictionary = {
-        "database": pdb_head["polymers"][0].dbrefs[0].database,
-        "id_code": pdb_head["polymers"][0].dbrefs[0].idcode,
-        "accession": pdb_head["polymers"][0].dbrefs[0].accession,
-        "full_name": pdb_head["polymers"][0].name,
-        "full_title": pdb_head["title"],
-        "depo_date": pdb_head["deposition_date"],
-        "fragment": int((((pdb_head["polymers"][0].dbrefs[0].first[2] - pdb_head["polymers"][0].dbrefs[0].first[0]) / 200)) + 1),
-        "fragment_offset": pdb_head["polymers"][0].dbrefs[0].first[2] - pdb_head["polymers"][0].dbrefs[0].first[0],
-        "organism_scientific": bio_pdb.header["source"]["1"]["organism_scientific"].upper(),
-        "organism_taxid": bio_pdb.header["source"]["1"]["organism_taxid"]
-        }
+    if meta_dictionary is None:
+      meta_dictionary = {
+          "database": pdb_head["polymers"][0].dbrefs[0].database,
+          "id_code": pdb_head["polymers"][0].dbrefs[0].idcode,
+          "accession": pdb_head["polymers"][0].dbrefs[0].accession,
+          "full_name": pdb_head["polymers"][0].name,
+          "full_title": pdb_head["title"],
+          "depo_date": pdb_head["deposition_date"],
+          #This calculation works for pdbs from the alphafold db, where they shift the start of a fragment by 200aa.
+          #This might need to be changed if a different source is used.
+          "fragment": int((((pdb_head["polymers"][0].dbrefs[0].first[2] - pdb_head["polymers"][0].dbrefs[0].first[0]) / 200)) + 1),
+          "fragment_offset": pdb_head["polymers"][0].dbrefs[0].first[2] - pdb_head["polymers"][0].dbrefs[0].first[0],
+          "organism_scientific": bio_pdb.header["source"]["1"]["organism_scientific"].upper(),
+          "organism_taxid": bio_pdb.header["source"]["1"]["organism_taxid"]
+          }
+    #print(meta_dictionary)
     #pdb_file.close()
 
     return model, meta_dictionary, af_object, af_sequence

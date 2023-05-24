@@ -78,7 +78,7 @@
 		"regex":
 			"[Bb]{2,}(?<=B.)(?:[^I]{1,8}(?=.*B)[Bb]{2,})+"
 			,
-		"regex_flank": 5,
+		"fasta_flank": 15,
 		"include": {
 			"contacts": [{
 				"name": "beta_neighbors",
@@ -114,7 +114,7 @@
 	{
 	"name": "sextuple-helix",
 	"regex": "(?=.{80,120})(?=.*[A]{4,})[aA]{7,}(?:.{2,5}[Aa]{7,}){5}.{0,3}[p]{5,}|[p]{5,}.{0,3}(?=.{80,120})(?=.*[A]{4,})[aA]{7,}(?:.{2,5}[Aa]{7,}){5}",
-	"regex_flank": 5,
+	"fasta_flank": 15,
 	"include": {
 		"contacts": [{
 			"name": "interhelix_contacts",
