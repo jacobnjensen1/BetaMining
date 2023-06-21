@@ -94,9 +94,6 @@
 			"flank_plddt": {
 				"size": 10,
 				"mean_ratio": [0, 0.9]
-			},
-			"plddt": {
-				"mean": [0, 80]
 			}
 		},
 		"exclude": {
@@ -108,7 +105,7 @@
 				"mask_symbol": "I",
 				"target_name": ["all"]
 			}],
-			"size": [0, 10]
+			"size": [0, 15]
 		}
 	},
 	{

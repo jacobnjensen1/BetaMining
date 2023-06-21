@@ -2,10 +2,10 @@
 results_prefix: default
 
 # The filepath to a directory of .pdb structure files to be analyzed. It is recommended that the absolute filepath is used.
-input_filepath: ../input/
+input_filepath: ./
 
 # The filepath to the directory where results should be saved.
-output_filepath: ../output/
+output_filepath: ./output/
 
 # Whether per residue data should be output for each input file. If True, each protein will get its own output file, which is not recommended for extremely large datasets.
 per_residue_output: True
