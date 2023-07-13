@@ -76,7 +76,7 @@
 	"target_region_features": [{
 		"name": "beta-run",
 		"regex":
-			"[Bb]{2,}(?<=B.)(?:[^I]{1,8}(?=.*B)[Bb]{2,})+"
+			"[Bb]{2,}(?<=B.)(?:[^IX]{1,8}(?=.*B)[Bb]{2,})+"
 			,
 		"fasta_flank": 15,
 		"include": {
@@ -105,6 +105,13 @@
 				"mask_symbol": "I",
 				"target_name": ["all"]
 			}],
+      "out_of_plane_sheets": {
+        "name": "out_of_plane",
+        "min_residues_for_comp": 4,
+        "max_degrees_difference": 35,
+        "max_distance": 10,
+        "mask_symbol": "X"
+      },
 			"size": [0, 15]
 		}
 	},

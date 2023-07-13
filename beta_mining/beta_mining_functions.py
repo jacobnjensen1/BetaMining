@@ -12,19 +12,13 @@ p = PDBParser(PERMISSIVE=1)
 from sklearn.metrics import pairwise_distances
 
 from biopandas.pdb import PandasPdb
-import datetime
-import os
 import sys
-import math
-import re
 import json
-import os
-import tarfile
 import gzip
-import shutil
-import glob
-from pathlib import Path
-import traceback
+from collections import defaultdict, deque
+import os
+#from pathlib import Path
+#import traceback
 
 #import beta_mining
 #from beta_mining import beta_mining_algorithm
@@ -130,6 +124,10 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
   coords_df = pdb_dataframe.loc[pdb_dataframe["atom_name"] == "CA"][["residue_number", "x_coord", "y_coord", "z_coord"]].reset_index(drop=True)
   residue_numbers_list = coords_df["residue_number"].values.tolist()
   distance_matrix = pairwise_distances(coords_df, metric = "euclidean")
+
+  np.set_printoptions(threshold=sys.maxsize)
+  #print(distance_matrix)
+  
   column_names = ["residue_number"]
 
   series_mask_dictionary = {"include": [], "exclude": []}
@@ -144,9 +142,17 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
             contact_min_distance = contact_type["min_distance"]
             contact_flank = contact_type["excluded_flank"]
             contact_matrix = np.add(np.triu(distance_matrix, k = (1 + contact_flank)),np.tril(distance_matrix, k = -1 * (1 + contact_flank)))
+
+            #if contact_type["name"] == "intramolecular_contacts":
+              #print(contact_matrix)
+
             contact_matrix = np.where(contact_matrix > contact_max_distance, 0, contact_matrix)
             contact_matrix = np.where(contact_matrix < contact_min_distance, 0, contact_matrix)
             contact_matrix = np.where(contact_matrix > 0, 1, contact_matrix)
+            
+            #np.set_printoptions(threshold=sys.maxsize)
+            #print(contact_matrix)
+
             if "secondary_structures" in contact_type:
               array_idx = []
               for structure in contact_type["secondary_structures"]:
@@ -156,6 +162,9 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
                   array_idx.extend(residue_features_dictionary[structure])
               array_idx = list(np.asarray(list(set(residue_numbers_list) - set(array_idx))) - 1)
               contact_matrix[:,array_idx] = 0
+              
+              #print(contact_matrix)
+
             if contact_type["target_name"] != ["all"]:
               target_idx = []
               for label in contact_type["target_name"]:
@@ -169,11 +178,177 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
               target_matrix = contact_matrix
 
           contacts_df = pd.DataFrame(data = contact_matrix, columns = residue_numbers_list)
+          #print(contacts_df.to_string())
           coords_df[contact_type["name"]] = contacts_df.apply(lambda row: row[row == 1.0].index.tolist(), axis = 1)
           series_mask_dictionary[condition].append((pd.Series(np.sum(target_matrix, axis = 1).astype(bool)),contact_type["mask_symbol"]))
 
   contacts_dataframe = coords_df[column_names]
   return contacts_dataframe, series_mask_dictionary
+
+def parseDSSP(dsspFile):
+  """Returns sheetIDs and strand ranges from dssp output.
+  This function captures the name of the sheet a strand is in, which is missed in most parsers,
+  and doubles the possible sheetIDs.
+  Requires the name of the dssp output.
+  """
+  RESIDUE_INDEXES = (0,5)
+  STRUCTURE_INDEX = 16
+  SHEET_INDEX = 33
+  MAX_DEQUE_SIZE = 10
+  
+  sheetStrandDict = defaultdict(list) #key=sheetID (eg. "A"): value=[(strandMin, strandMax), ...]
+  #note about dssp sheetIDs - they are A-Z, but loop around if there are more than 26 sheets in one pdb
+  #this can be the case for large/complex proteins
+  #the workaround I used was to make the sheetID lowercases after it loops
+  #this allows for 52 sheets, which is better, but not perfect.
+  #a better method would be to assign an integer sheetID - maybe do that at some point?
+  #it's unlikely to change anything meaningfully
+  
+  with open(dsspFile) as inFile:
+    inHeader = True
+    while inHeader:
+      line = inFile.readline()
+      if " #  RESIDUE" in line:
+        inHeader = False
+                                                
+    currentStrandMinIndex = 0
+    currentStrandMaxIndex = 0
+    currentSheet = ""
+    recentSheets = deque() #holds sheetIDs, use appendleft and pop
+    for line in inFile:
+      secondaryStructure = line[STRUCTURE_INDEX]
+      if secondaryStructure == "E":
+        residue = int(line[RESIDUE_INDEXES[0]:RESIDUE_INDEXES[1]])
+        currentStrandMinIndex = residue if currentStrandMinIndex == 0 else currentStrandMinIndex
+        currentStrandMaxIndex = residue
+        sheet = line[SHEET_INDEX]
+        currentSheet = sheet if currentSheet == "" else currentSheet
+        if sheet != currentSheet:
+          if currentSheet not in recentSheets:
+            if currentSheet.lower() in recentSheets:
+              currentSheet = currentSheet.lower()
+            if "Z" in sheetStrandDict:
+              currentSheet = currentSheet.lower()
+            if currentSheet not in recentSheets:
+              recentSheets.appendleft(currentSheet)
+            if len(recentSheets) > MAX_DEQUE_SIZE:
+              recentSheets.pop()
+          sheetStrandDict[currentSheet].append((currentStrandMinIndex, currentStrandMaxIndex - 1)) #max-1 because this is first of next strand
+          currentStrandMinIndex = residue
+          currentStrandMaxIndex = 0
+          currentSheet = sheet
+      else: #residue is not in a strand
+        if currentStrandMaxIndex != 0:
+          if currentSheet not in recentSheets:
+            if currentSheet.lower() in recentSheets:
+              currentSheet = currentSheet.lower()
+            if "Z" in sheetStrandDict:
+              currentSheet = currentSheet.lower()
+            if currentSheet not in recentSheets:
+              recentSheets.appendleft(currentSheet)
+            if len(recentSheets) > MAX_DEQUE_SIZE:
+              recentSheets.pop()
+          sheetStrandDict[currentSheet].append((currentStrandMinIndex, currentStrandMaxIndex))
+          currentStrandMinIndex = 0
+          currentStrandMaxIndex = 0
+          currentSheet = ""
+  return sheetStrandDict
+
+def sheetsAreGood(interactingStrandAvgs, max_degrees):
+  """Returns True if all strands in nearby sheets are in roughly the same plane.
+  Based on strand-pair wise angle differences.
+  """
+  for i in range(len(interactingStrandAvgs)):
+    for j in range(i + 1, len(interactingStrandAvgs)):
+      angle = np.arccos(np.clip(np.dot(interactingStrandAvgs[i], interactingStrandAvgs[j]), -1.0, 1.0))
+      angle = angle * (180 / 3.1415)
+      if not (-1 * max_degrees) <= angle <= max_degrees:
+        if not (-1 * max_degrees) <= (angle - 180) <= max_degrees:
+          #reject all residues in ALL of these sheets
+          return False
+  return True
+
+def handle_out_of_plane(model, options, filename, in_path):
+  """determines which residues are in out of plane sheets based on the criteria in the json
+  and returns a series_mask in the style of series_mask_dictionary from contacts_df.
+  This also runs dssp on the pdb - generating a temp.dssp file.
+  """
+  min_residues = options["min_residues_for_comp"]
+  max_degrees = options["max_degrees_difference"]
+  max_distance = options["max_distance"]
+  symbol = options["mask_symbol"]
+  series_mask = pd.Series([False for _ in range(model.numResidues())])
+
+  tempDSSPFileBase = in_path + "temp"
+  if not filename.endswith(".gz"):
+    prody.execDSSP(filename, tempDSSPFileBase)
+  else:
+    tempPDBFile = in_path + "temp.pdb"
+    with gzip.open(filename, "rt") as inFile, open(tempPDBFile, "wt") as outFile:
+      outFile.write(inFile.read())
+    prody.execDSSP(tempPDBFile, tempDSSPFileBase)
+    if os.path.isfile(tempPDBFile):
+      os.remove(tempPDBFile)
+
+  sheetStrandDict = parseDSSP(tempDSSPFileBase + ".dssp")
+
+  if os.path.isfile(tempDSSPFileBase + ".dssp"):
+    os.remove(tempDSSPFileBase + ".dssp")
+
+  if len(sheetStrandDict) == 0:
+    return(series_mask, symbol)
+
+  cCoords = np.array(model.select("name C").getCoords())
+  oCoords = np.array(model.select("name O").getCoords())
+  caCoords = np.array(model.ca.getCoords())
+  coVectors = oCoords - cCoords
+  #coVectors are the carbonyl vectors (from C to O), and are correct above.
+  #Flip every other coVector so that they point to the same side of beta sheets
+  #Note: this would cause major issues for any other structure.
+  coVectors[::2] = -1 * coVectors[::2]
+
+
+  sheetStrandAvgVectors = {sheetID: [] for sheetID in sheetStrandDict.keys()} #key=sheetID: value=[(avg x,y,z for sheet), ...]
+  residueToSheetDict = {} #key=residueID: value=sheetID
+  allSheetStrandResidues = [] #all residues assigned to a sheet
+  for sheetID, strandRanges in sheetStrandDict.items():
+    for strandRange in strandRanges:            
+      allSheetStrandResidues.extend(list(range(strandRange[0] - 1, strandRange[1])))
+      if (strandRange[1] - strandRange[0]) + 1 > min_residues: 
+        sheetStrandAvgVectors[sheetID].append(np.mean(coVectors[strandRange[0] - 1: strandRange[1]], axis = 0))
+      for residueID in range(strandRange[0] - 1, strandRange[1]):
+        residueToSheetDict[residueID] = sheetID
+  #change vectors to unit vectors
+  sheetStrandAvgVectors = {sheetID: [vector / np.linalg.norm(vector) for vector in vectors] for sheetID, vectors in sheetStrandAvgVectors.items()}
+
+  distances = pairwise_distances(caCoords[allSheetStrandResidues,], metric="euclidean")
+  contacts = np.asarray(distances < max_distance) 
+  allSheetStrandResidues = np.array(allSheetStrandResidues)
+
+  sheetsInteracting = {}#key=sheetID:value={sheetID, sheetID,...} 
+  for testIndex, residueContacts in enumerate(contacts):
+    residueIndex = allSheetStrandResidues[testIndex]
+    contactIndexes = np.flatnonzero(residueContacts)
+    sheetID = residueToSheetDict[residueIndex]
+    if sheetID not in sheetsInteracting:
+      sheetsInteracting[sheetID] = set()
+    for contactID in contactIndexes:
+      contactResidue = allSheetStrandResidues[contactID]
+      sheetsInteracting[sheetID].add(residueToSheetDict[contactResidue])
+
+  rejectedResidues = set()
+  for sheetList in sheetsInteracting.values():
+    interactingStrandAvgs = [sheetStrandAvgVectors[sheetID] for sheetID in sheetList]
+    #this is a 2-D list, made 1-D below
+    interactingStrandAvgs = [vector for strandVectors in interactingStrandAvgs for vector in strandVectors]
+    if not sheetsAreGood(interactingStrandAvgs, max_degrees):
+      for sheetID in sheetList:
+        for strandRange in sheetStrandDict[sheetID]:
+          rejectedResidues.update(list(range(strandRange[0] - 1, strandRange[1])))
+
+  series_mask[list(rejectedResidues)] = True
+
+  return (series_mask, symbol)
 
 def handle_flank(flank_json, match_object, dihedral_dataframe):
   """returns a boolean value indicating whether a regex match should be passed
@@ -389,8 +564,8 @@ def create_model_metainfo(pdb_file):
 
     # decompress if needed
     if pdb_file.endswith(".gz") == True:
-        uncompressed_pdb_file = gzip.open(pdb_file, "rt")
-        bio_pdb = p.get_structure("XXXX", uncompressed_pdb_file)
+        decompressed_pdb_file = gzip.open(pdb_file, "rt")
+        bio_pdb = p.get_structure("XXXX", decompressed_pdb_file)
     else:
         bio_pdb = p.get_structure("XXXX", pdb_file)
 

@@ -2,34 +2,20 @@
 #
 # This script provides an interface that combines the functions in the
 # "BetaMining" package to analyze .pdb files of interest.
-import prody
-import numpy as np
 import pandas as pd
-
-from Bio.PDB.PDBParser import PDBParser# as p
-p = PDBParser(PERMISSIVE=1)
-
-from sklearn.metrics import pairwise_distances
 
 from biopandas.pdb import PandasPdb
 import datetime
 import os
-import sys
-import math
 import re
 import json
-import os
-import tarfile
-import gzip
-import shutil
 import glob
-from pathlib import Path
+#from pathlib import Path
 import importlib.resources
 
 #import beta_mining
 #from beta_mining import beta_mining_algorithm
 from beta_mining import beta_mining_functions
-
 
 def analyze_structure(filename, config, json, output_dictionary):
     """Main beta_mining algorithm.
@@ -40,14 +26,16 @@ def analyze_structure(filename, config, json, output_dictionary):
     json -- the json used to guide the analysis
     output_dictionary -- dictionary of output files to generate
     """
+    #Note: this current setup means that any changes to the structure string persist for all targets
+    #This would be an issue if there were targets with non-overlapping exclusions and inclusions
+    #It might be best to call this for each target separately?
+
     # create ProDy model, meta information dictionary, BioPandas Dataframe and AA sequence list
     result = beta_mining_functions.create_model_metainfo(filename)
     if result != None:
       model, meta_dictionary, af_object, af_sequence = result
     else:
       return None
-
-    #model, meta_dictionary, af_object, af_sequence = beta_mining_functions.create_model_metainfo(filename)
 
     # create the dataframe of dihedral angles, pandas series of secondary structures, and a dictionary with secondary structures as keys and a list of residue numbers as values.
     dihedral_df, secondary_structure_series, secondary_structure_reference = beta_mining_functions.calculation_df(model, meta_dictionary["fragment_offset"], json["secondary_structures"], config["units"])
@@ -62,10 +50,18 @@ def analyze_structure(filename, config, json, output_dictionary):
                 # replace features from exclude with the specified symbol last
                 for condition in config["conditions"]:
                     for series_symbol in mask_dict[condition]:
+                        #print(series_symbol[0])
+                        #print(series_symbol[1])
+                        #print(mask_dict)
+                        #print(secondary_structure_series)
                         secondary_structure_series.mask(series_symbol[0], series_symbol[1], inplace = True)
+                        #print(secondary_structure_series)
                 # left join the calculated dihedral and twist dataframe and the contacts dataframe
                 # create a secondary structure symbols string to search with regex
                 dihedral_df = pd.merge(dihedral_df, contacts_dataframe, on = "residue_number", how = "left")
+            if "out_of_plane_sheets" in target["exclude"].keys():
+                series_symbol = beta_mining_functions.handle_out_of_plane(model, target["exclude"]["out_of_plane_sheets"], filename, config["input_filepath"])
+                secondary_structure_series.mask(series_symbol[0], series_symbol[1], inplace = True)
 
     structure_symbols_string = "".join(secondary_structure_series)
     structure_length = len(structure_symbols_string)
@@ -77,10 +73,12 @@ def analyze_structure(filename, config, json, output_dictionary):
 
     residue_df = pd.merge(residue_df, dihedral_df, on = "residue_number", how = "left")
 
+    #print(residue_df.columns)
+    #print(residue_df["secondary_structure"])
+    #print(dihedral_df)
     #add plddt column from residue_df to dihedral_df
-    #print(dihedral_df)
     dihedral_df = dihedral_df.join(residue_df["plddt"])
-    #print(dihedral_df)
+    #print(dihedral_df.to_string())
 
     residue_df["structure_symbol"] = secondary_structure_series
     if output_dictionary["proteome_aa"] != False: # save complete protein dataframe if indicated in config YAML
@@ -152,6 +150,9 @@ def analyze_structure(filename, config, json, output_dictionary):
                             meta_dictionary["organism_taxid"],
                             aa_sequence,
                             ss_sequence]
+                        for i, val in enumerate(hit_line):
+                            if type(val) == str and "," in val:
+                              hit_line[i] = f'"{val}"'
                         for field in config["additional_attributes"].keys():
                             for funct_name in config["additional_attributes"][field]:
                                 funct = getattr(pd.Series, funct_name)
@@ -160,8 +161,6 @@ def analyze_structure(filename, config, json, output_dictionary):
                                 hit_line.append(attr_value)
                         hit_line = list(map(str, hit_line))
                         output_dictionary["hits_aa"].write(",".join(hit_line) + "\n")
-
-
 
 def main(config_settings):
     """Filehandling algorithm.
@@ -229,7 +228,9 @@ def main(config_settings):
     #print(file_list)
     file_number = 1
     file_total = len(file_list)
-    for file in file_list:
+    # we will sort the file list so that protein fragments are together,
+    # but they won't be in the perfect order because of alphabetic sorting.
+    for file in sorted(file_list):
         print("Mining file " + file + ": "+ str(file_number) + " of " + str(file_total) + "...")
         analyze_structure(file, config_settings, target_parameters, output_files)
         file_number = file_number + 1
@@ -237,9 +238,6 @@ def main(config_settings):
     #close the file objects
     hits_fasta.close()
     hits_aa.close()
-
-
-
 
 if __name__ == "__main__":
     main(config_settings)

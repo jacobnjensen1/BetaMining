@@ -22,7 +22,6 @@ output_filename: beta_mining_hits
 # A list of which structures to target in a run, these must be present in the structures json file.
 target_names:
   - beta-run
-  - sextuple-helix
 
 # A list of desired outputs. "fasta" indicates the desire for all information and sequence hits in a fasta file, "hits_aa" will also output a large datatable of every residue in every hit sequence, proteome_aa will output individual datatables of all calculations for each protein structure file, regardless of hit status. This can be useful for figuring out why a certain protein is or is not classified as a hit.
 save_files:

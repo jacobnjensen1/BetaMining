@@ -15,12 +15,8 @@ import yaml
 import shutil
 import signal
 import datetime
-from pathlib import Path
 from argparse import ArgumentParser
 
-#directory = Path(__file__)
-#sys.path.append(str(directory.parent.parent))
-#import beta_mining
 from beta_mining import beta_mining_algorithm
 from beta_mining import beta_mining_functions
 
@@ -55,7 +51,7 @@ def generate_yaml(target_directory = os.getcwd(), prefix = "generated_"):
 def main():
     parser = ArgumentParser("beta_mining", description = script_description)
     parser.add_argument("-c", "--config", help = "The config file (YAML format) to use for a run.", type = str, default = "default_config.yaml")
-    parser.add_argument("-f", "--filepath", help = "If running beta_mining in default mode, indicate path to .pdb files here. A default YAML will be generated and a timestamp-based prefix will be used for all outputs.", type = str, default = "no_input")
+    #parser.add_argument("-f", "--filepath", help = "If running beta_mining in default mode, indicate path to .pdb files here. A default YAML will be generated and a timestamp-based prefix will be used for all outputs.", type = str, default = "no_input")
     parser.add_argument("-d", "--defaults", help = "Generate a default YAML config file in the current working directory.", action = "store_true")
     args = parser.parse_args()
 
@@ -70,26 +66,26 @@ def main():
         sys.exit(0)
 
     # If a filepath is specified, generate default YAML and run the full program.
-    elif args.filepath != "no_input":
-        if args.config != "default_config.yaml":
-            print("Filepath default mode and YAML are mutually exclusive. Please use one or the other. Exiting.")
-            sys.exit(0)
-        filepath = args.filepath
+    #elif args.filepath != "no_input":
+    #    if args.config != "default_config.yaml":
+    #        print("Filepath default mode and YAML are mutually exclusive. Please use one or the other. Exiting.")
+    #        sys.exit(0)
+    #    filepath = args.filepath
 
-        generate_yaml(filepath, timestamp)
-        print(os.getcwd())
-        config = open(filepath + timestamp + "config.yaml", "r")
-        settings = yaml.load(config, Loader = yaml.FullLoader)
-        config.close()
-        settings["results_prefix"] = timestamp
-        settings["input_filepath"] = filepath
+    #    generate_yaml(filepath, timestamp)
+    #    print(os.getcwd())
+    #    config = open(filepath + timestamp + "config.yaml", "r")
+    #    settings = yaml.load(config, Loader = yaml.FullLoader)
+    #    config.close()
+    #    settings["results_prefix"] = timestamp
+    #    settings["input_filepath"] = filepath
 
-        yaml_stream = open(filepath + timestamp + "config.yaml", "w")
-        yaml.dump(settings, yaml_stream)
-        yaml_stream.close()
+    #    yaml_stream = open(filepath + timestamp + "config.yaml", "w")
+    #    yaml.dump(settings, yaml_stream)
+    #    yaml_stream.close()
 
     # If a config is specified, load all arguments from it.
-    elif args.config != "default_config.yaml":
+    if os.path.isfile(args.config):
         config = open(args.config, "r")
         settings = yaml.load(config, Loader = yaml.FullLoader)
         config.close()
@@ -99,7 +95,7 @@ def main():
             config.write("\ntimestamp: " + timestamp)
             config.close()
     else:
-        print("Unable to process arguments. Exiting.")
+        print("Unable to open config file, exiting.")
         sys.exit(0)
 
     # Create output directory if it doesn't exist
