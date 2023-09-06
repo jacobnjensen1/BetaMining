@@ -123,7 +123,7 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
   """
   coords_df = pdb_dataframe.loc[pdb_dataframe["atom_name"] == "CA"][["residue_number", "x_coord", "y_coord", "z_coord"]].reset_index(drop=True)
   residue_numbers_list = coords_df["residue_number"].values.tolist()
-  distance_matrix = pairwise_distances(coords_df, metric = "euclidean")
+  distance_matrix = pairwise_distances(coords_df.loc[:,["x_coord", "y_coord", "z_coord"]], metric = "euclidean")
 
   np.set_printoptions(threshold=sys.maxsize)
   #print(distance_matrix)
@@ -143,42 +143,66 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
             contact_flank = contact_type["excluded_flank"]
             contact_matrix = np.add(np.triu(distance_matrix, k = (1 + contact_flank)),np.tril(distance_matrix, k = -1 * (1 + contact_flank)))
 
-            #if contact_type["name"] == "intramolecular_contacts":
-              #print(contact_matrix)
-
+            #print(residue_features_dictionary["beta-sheet"])
+            #print(contact_matrix[26])
             contact_matrix = np.where(contact_matrix > contact_max_distance, 0, contact_matrix)
             contact_matrix = np.where(contact_matrix < contact_min_distance, 0, contact_matrix)
             contact_matrix = np.where(contact_matrix > 0, 1, contact_matrix)
+
+            #secondary - what it touches
+            #target - what it was
             
-            #np.set_printoptions(threshold=sys.maxsize)
-            #print(contact_matrix)
+            excluded_far_residue_indices = set()
+            excluded_residue_indices = set()
+
+            if "excluded_structure_flanks" in contact_type:
+              for structure, flank_distance in contact_type["excluded_structure_flanks"].items():
+                flank_distance = int(flank_distance)
+                #print(structure, flank_distance)
+                if structure in residue_features_dictionary:
+                  #print(residue_features_dictionary[structure])
+                  for i in residue_features_dictionary[structure]:
+                    excluded_far_residue_indices.update(range(max(i - flank_distance, 0), min(i + flank_distance + 1, len(residue_numbers_list) - 1)))
+                    #excluded_residue_indices.update(range(i - flank_distance, i + flank_distance + 1))
+                  #print(excluded_far_residue_indices)
+
+                  #excluded_far_residue_indices.extend(residue_features_dictionary[structure])
+                  #excluded_residue_indices.extend(residue_features_dictionary[structure])
 
             if "secondary_structures" in contact_type:
-              array_idx = []
               for structure in contact_type["secondary_structures"]:
-                #print(structure)
-                #print(residue_features_dictionary)
                 if structure in residue_features_dictionary:
-                  array_idx.extend(residue_features_dictionary[structure])
-              array_idx = list(np.asarray(list(set(residue_numbers_list) - set(array_idx))) - 1)
-              contact_matrix[:,array_idx] = 0
+                  #print(residue_numbers_list)
+                  #print(residue_features_dictionary[structure])
+                  #print(residue_features_dictionary)
+                  excluded_far_residue_indices.update({i - 1 for i in residue_numbers_list} - {i - 1 for i in residue_features_dictionary[structure]})
+
+            if len(excluded_far_residue_indices) != 0:
+              #excluded_far_residue_indices = list(np.asarray(list(set(residue_numbers_list) - excluded_far_residue_indices)) - 1)
+              #print(excluded_far_residue_indices)
+              contact_matrix[:,sorted(excluded_far_residue_indices)] = 0
               
-              #print(contact_matrix)
+              #with the flank addition - we want to increase the bounds of residues_contacted
 
             if contact_type["target_name"] != ["all"]:
-              target_idx = []
               for label in contact_type["target_name"]:
-                #print(label)
                 if label in residue_features_dictionary:
-                  target_idx.extend(residue_features_dictionary[label])
-              target_idx = list(np.asarray(list(set(residue_numbers_list) - set(target_idx))) - 1)
-              target_matrix = contact_matrix
-              target_matrix[array_idx,:] = 0
-            else:
-              target_matrix = contact_matrix
+                  excluded_residue_indices.update(residue_features_dictionary[label])
+
+            if len(excluded_residue_indices) != 0:
+              excluded_residue_indices = list(np.asarray(list(set(residue_numbers_list) - excluded_residue_indices)) - 1)
+              contact_matrix[sorted(excluded_residue_indices),:] = 0
+
+            #print(excluded_residue_indices)
+            #print(excluded_far_residue_indices)
+
+            target_matrix = contact_matrix
+              #target_matrix[sorted(excluded_residue_indices),:] = 0
+              #with the flank addition - we want to increase the bounds of excluded_residue_indices
+            #else:
+            #  target_matrix = contact_matrix
 
           contacts_df = pd.DataFrame(data = contact_matrix, columns = residue_numbers_list)
-          #print(contacts_df.to_string())
           coords_df[contact_type["name"]] = contacts_df.apply(lambda row: row[row == 1.0].index.tolist(), axis = 1)
           series_mask_dictionary[condition].append((pd.Series(np.sum(target_matrix, axis = 1).astype(bool)),contact_type["mask_symbol"]))
 

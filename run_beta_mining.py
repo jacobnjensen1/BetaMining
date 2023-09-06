@@ -18,7 +18,6 @@ import datetime
 from argparse import ArgumentParser
 
 from beta_mining import beta_mining_algorithm
-from beta_mining import beta_mining_functions
 
 script_description = (
   "This is a Python 3 package for identifying secondary structure patterns from multimer assemblies of predicted monomer structure files."

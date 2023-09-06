@@ -76,13 +76,13 @@
 	"target_region_features": [{
 		"name": "beta-run",
 		"regex":
-			"[Bb]{2,}(?<=B.)(?:[^IX]{1,8}(?=.*B)[Bb]{2,})+"
+			"(?<![IX].|.[IX])[Bb]{2,}(?<=B.|Bb)(?:[^IX]{1,8}(?=b*B)[Bb]{2,})+(?![IX].|.[IX])"
 			,
 		"fasta_flank": 15,
 		"include": {
 			"contacts": [{
 				"name": "beta_neighbors",
-				"max_distance": 14,
+				"max_distance": 13,
 				"min_distance": 6,
 				"excluded_flank": 3,
 				"secondary_structures": [
@@ -99,9 +99,12 @@
 		"exclude": {
 			"contacts": [{
 				"name": "intramolecular_contacts",
-				"max_distance": 6,
+				"max_distance": 12,
 				"min_distance": 0,
 				"excluded_flank": 2,
+        "excluded_structure_flanks": {
+          "beta-sheet": 3
+        },
 				"mask_symbol": "I",
 				"target_name": ["all"]
 			}],

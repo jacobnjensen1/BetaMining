@@ -50,7 +50,7 @@ def analyze_structure(filename, config, json, output_dictionary):
                 # replace features from exclude with the specified symbol last
                 for condition in config["conditions"]:
                     for series_symbol in mask_dict[condition]:
-                        #print(series_symbol[0])
+                        #print(sum(series_symbol[0] == True))
                         #print(series_symbol[1])
                         #print(mask_dict)
                         #print(secondary_structure_series)
@@ -96,9 +96,11 @@ def analyze_structure(filename, config, json, output_dictionary):
     # look for regex matches in the secondary structure string for each type of target
     for target in json["target_region_features"]:
         if target["name"] in config["target_names"]:
+            #print(target["regex"])
             compiled_regex = re.compile(target["regex"])
             #print(structure_symbols_string)
             targets_found = re.finditer(compiled_regex, structure_symbols_string)
+            #print(list(targets_found))
             fasta_fields = [
                             target["name"],
                             meta_dictionary["id_code"],
