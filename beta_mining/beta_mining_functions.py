@@ -17,12 +17,6 @@ import json
 import gzip
 from collections import defaultdict, deque
 import os
-#from pathlib import Path
-#import traceback
-
-#import beta_mining
-#from beta_mining import beta_mining_algorithm
-#from beta_mining import beta_mining_functions
 
 def polymer_df(pdb_meta_dict, pdb_object):
   """returns a dataframe of polymer metadata and residue information from the
@@ -106,6 +100,7 @@ def calculation_df(prody_model, residue_offset, secondary_structures, units = "d
 
   secondary_structure_dictionary["twist"] = dict(zip(df.residue_number, df.twist))
   #print(secondary_structure_dictionary)
+  #print(symbol_series.to_string())
   return df, symbol_series, secondary_structure_dictionary
 
 def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, target_list):
@@ -144,7 +139,8 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
             contact_matrix = np.add(np.triu(distance_matrix, k = (1 + contact_flank)),np.tril(distance_matrix, k = -1 * (1 + contact_flank)))
 
             #print(residue_features_dictionary["beta-sheet"])
-            #print(contact_matrix[26])
+            #if contact_type["mask_symbol"] == "B":
+              #print(contact_matrix[341])
             contact_matrix = np.where(contact_matrix > contact_max_distance, 0, contact_matrix)
             contact_matrix = np.where(contact_matrix < contact_min_distance, 0, contact_matrix)
             contact_matrix = np.where(contact_matrix > 0, 1, contact_matrix)
@@ -169,13 +165,20 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
                   #excluded_far_residue_indices.extend(residue_features_dictionary[structure])
                   #excluded_residue_indices.extend(residue_features_dictionary[structure])
 
+            #print(contact_type)
+            #print(residue_features_dictionary)
             if "secondary_structures" in contact_type:
+              #print(contact_type["secondary_structures"])
               for structure in contact_type["secondary_structures"]:
                 if structure in residue_features_dictionary:
                   #print(residue_numbers_list)
                   #print(residue_features_dictionary[structure])
                   #print(residue_features_dictionary)
                   excluded_far_residue_indices.update({i - 1 for i in residue_numbers_list} - {i - 1 for i in residue_features_dictionary[structure]})
+                  #print(excluded_far_residue_indices)
+                else:
+                  #The thing it would touch does not exist
+                  contact_matrix[:,:] = 0
 
             if len(excluded_far_residue_indices) != 0:
               #excluded_far_residue_indices = list(np.asarray(list(set(residue_numbers_list) - excluded_far_residue_indices)) - 1)
@@ -195,6 +198,8 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
 
             #print(excluded_residue_indices)
             #print(excluded_far_residue_indices)
+            #if contact_type["mask_symbol"] == "B":
+              #print(contact_matrix[341])
 
             target_matrix = contact_matrix
               #target_matrix[sorted(excluded_residue_indices),:] = 0
@@ -292,7 +297,7 @@ def sheetsAreGood(interactingStrandAvgs, max_degrees):
           return False
   return True
 
-def handle_out_of_plane(model, options, filename, in_path):
+def handle_out_of_plane(model, options, filename, out_path, thread_id):
   """determines which residues are in out of plane sheets based on the criteria in the json
   and returns a series_mask in the style of series_mask_dictionary from contacts_df.
   This also runs dssp on the pdb - generating a temp.dssp file.
@@ -303,14 +308,24 @@ def handle_out_of_plane(model, options, filename, in_path):
   symbol = options["mask_symbol"]
   series_mask = pd.Series([False for _ in range(model.numResidues())])
 
-  tempDSSPFileBase = in_path + "temp"
+  #tempDSSPFileBase = out_path + "temp" + "_" + str(thread_id)
+  tempDSSPFileBase = f"{out_path}temp_{thread_id}"
+  #print(tempDSSPFileBase)
+  
+
+  #This is included just in case it happens. I don't think it will, but I don't entirely trust current_process()
+  if os.path.isfile(tempDSSPFileBase + ".dssp"):
+    sys.exit("\n\nTemp files overlapped - the thread_id method needs to be changed.\n\n")
+
   if not filename.endswith(".gz"):
     prody.execDSSP(filename, tempDSSPFileBase)
   else:
-    tempPDBFile = in_path + "temp.pdb"
+    tempPDBFile = out_path + "temp_" + str(thread_id) + ".pdb"
     with gzip.open(filename, "rt") as inFile, open(tempPDBFile, "wt") as outFile:
       outFile.write(inFile.read())
+    
     prody.execDSSP(tempPDBFile, tempDSSPFileBase)
+
     if os.path.isfile(tempPDBFile):
       os.remove(tempPDBFile)
 

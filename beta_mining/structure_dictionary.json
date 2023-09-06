@@ -82,7 +82,7 @@
 		"include": {
 			"contacts": [{
 				"name": "beta_neighbors",
-				"max_distance": 13,
+				"max_distance": 12,
 				"min_distance": 6,
 				"excluded_flank": 3,
 				"secondary_structures": [
@@ -101,7 +101,7 @@
 				"name": "intramolecular_contacts",
 				"max_distance": 12,
 				"min_distance": 0,
-				"excluded_flank": 2,
+				"excluded_flank": 4,
         "excluded_structure_flanks": {
           "beta-sheet": 3
         },

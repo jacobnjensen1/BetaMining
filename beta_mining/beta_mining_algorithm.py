@@ -12,19 +12,20 @@ import json
 import glob
 #from pathlib import Path
 import importlib.resources
+import multiprocessing as mp
 
 #import beta_mining
 #from beta_mining import beta_mining_algorithm
 from beta_mining import beta_mining_functions
 
-def analyze_structure(filename, config, json, output_dictionary):
+def analyze_structure(filename, config, json, output_dictionary, thread_id):
     """Main beta_mining algorithm.
 
     Keyword arguments:
     filename -- the .pdb or .pdb.gz structure file being analyzed
     config -- the configuration YAML file
     json -- the json used to guide the analysis
-    output_dictionary -- dictionary of output files to generate
+    output_dictionary -- dictionary of what output to generate
     """
     #Note: this current setup means that any changes to the structure string persist for all targets
     #This would be an issue if there were targets with non-overlapping exclusions and inclusions
@@ -51,6 +52,7 @@ def analyze_structure(filename, config, json, output_dictionary):
                 for condition in config["conditions"]:
                     for series_symbol in mask_dict[condition]:
                         #print(sum(series_symbol[0] == True))
+                        #print(series_symbol[0].to_string())
                         #print(series_symbol[1])
                         #print(mask_dict)
                         #print(secondary_structure_series)
@@ -60,7 +62,7 @@ def analyze_structure(filename, config, json, output_dictionary):
                 # create a secondary structure symbols string to search with regex
                 dihedral_df = pd.merge(dihedral_df, contacts_dataframe, on = "residue_number", how = "left")
             if "out_of_plane_sheets" in target["exclude"].keys():
-                series_symbol = beta_mining_functions.handle_out_of_plane(model, target["exclude"]["out_of_plane_sheets"], filename, config["input_filepath"])
+                series_symbol = beta_mining_functions.handle_out_of_plane(model, target["exclude"]["out_of_plane_sheets"], filename, config["output_filepath"], thread_id)
                 secondary_structure_series.mask(series_symbol[0], series_symbol[1], inplace = True)
 
     structure_symbols_string = "".join(secondary_structure_series)
@@ -80,27 +82,21 @@ def analyze_structure(filename, config, json, output_dictionary):
     dihedral_df = dihedral_df.join(residue_df["plddt"])
     #print(dihedral_df.to_string())
 
+    #one per task, won't cause collisions
     residue_df["structure_symbol"] = secondary_structure_series
     if output_dictionary["proteome_aa"] != False: # save complete protein dataframe if indicated in config YAML
         output_filename = config["output_filepath"] + config["results_prefix"] + meta_dictionary["accession"] + "_f" + str(meta_dictionary["fragment"]) + "_" + meta_dictionary["depo_date"].lower() + config["output_filename"]
-
-        #print(config["per_residue_output"])
         if config["per_residue_output"]:
           residue_df.to_csv(output_filename, index = False)
-        #print(residue_df[["plddt"]].to_string(index=False))
-        #residue_df absolutely has the plddt
-        #the number of plddt entries and residues is the same, as they should be.
-        #print(len(residue_df.index))
-        #print(len(residue_df[["plddt"]]))
 
+    output_strings = [[],[]] #can hold [csv strings], [fasta strings] but only if flags are set
     # look for regex matches in the secondary structure string for each type of target
+    print(f"Sites for {filename}:")
     for target in json["target_region_features"]:
         if target["name"] in config["target_names"]:
-            #print(target["regex"])
             compiled_regex = re.compile(target["regex"])
             #print(structure_symbols_string)
             targets_found = re.finditer(compiled_regex, structure_symbols_string)
-            #print(list(targets_found))
             fasta_fields = [
                             target["name"],
                             meta_dictionary["id_code"],
@@ -136,7 +132,8 @@ def analyze_structure(filename, config, json, output_dictionary):
                     if output_dictionary["hits_fasta"] != False:
                         fasta_header = ">" + "|".join(fasta_fields) + "|residues " + \
                           str(res_start) + "-" + str(res_end) + "|abs_residues " + str(abs_res_start) + "-" + str(abs_res_end)
-                        output_dictionary["hits_fasta"].write(fasta_header + "\n" + aa_sequence + "\n")
+                        #output_dictionary["hits_fasta"].write(fasta_header + "\n" + aa_sequence + "\n")
+                        output_strings[1].append(fasta_header + "\n" + aa_sequence + "\n")
 
                     if output_dictionary["hits_aa"] != False:
                         hit_line = [target["name"],
@@ -162,7 +159,42 @@ def analyze_structure(filename, config, json, output_dictionary):
                                 attr_value = funct(residue_df[field][residue_df["residue_number"].isin([*range(match_obj.span()[0] + 1, match_obj.span()[1]+ 2)])])
                                 hit_line.append(attr_value)
                         hit_line = list(map(str, hit_line))
-                        output_dictionary["hits_aa"].write(",".join(hit_line) + "\n")
+                        #output_dictionary["hits_aa"].write(",".join(hit_line) + "\n")
+                        output_strings[0].append(",".join(hit_line) + "\n")
+    return output_strings
+
+def listener(q, output_files):
+  if output_files["hits_aa"]:
+    hits_aa = open(output_files["hits_aa"], "a")
+  if output_files["hits_fasta"]:
+    hits_fasta = open(output_files["hits_fasta"], "w")
+  while True:
+    m = q.get()
+    #print(m)
+    if m == "done":
+      print("done")
+      if output_files["hits_aa"]:
+        hits_aa.close()
+      if output_files["hits_fasta"]:
+        hits_fasta.close()
+      break
+    else:
+      if output_files["hits_aa"]:
+        for aa_entry in m[0]:
+          hits_aa.write(aa_entry)
+      if output_files["hits_fasta"]:
+        for fasta_entry in m[1]:
+          hits_fasta.write(fasta_entry)
+  
+
+#needs all the params for analyze_structure and the queue
+def runner(file, config_settings, target_parameters, bool_output_files, q):
+  #thread_id includes results_prefix so that multiple runs can happen at the same time in the same directory
+  thread_id = f"{config_settings['results_prefix']}{mp.current_process()._identity[0]}"
+  res = analyze_structure(file, config_settings, target_parameters, bool_output_files, thread_id)
+  if len(res[0]) + len(res[1]) > 0:
+    #print(res)
+    q.put(res)
 
 def main(config_settings):
     """Filehandling algorithm.
@@ -206,22 +238,25 @@ def main(config_settings):
     ### prepare output files ###
     #hits_fasta
     if "hits_fasta" in config_settings["save_files"]:
-        hits_fasta = open(output_path + results_prefix + output_file + ".fasta", "w")
+        hits_fasta_fname = output_path + results_prefix + output_file + ".fasta"
+        #hits_fasta = open(hits_fasta_fname, "w")
     else:
-        hits_fasta = False
+        hits_fasta_fname = False
     #hits_aa
     if "hits_aa" in config_settings["save_files"]:
-        hits_aa = open(output_path + results_prefix + output_file + ".csv", "w")
-        hits_aa.write(",".join(field_list) + "\n")
+        hits_aa_fname = output_path + results_prefix + output_file + ".csv"
+        with open(hits_aa_fname, "w") as hits_aa:
+          hits_aa.write(",".join(field_list) + "\n")
     else:
-        hits_aa = False
+        hits_aa_fname = False
     #proteome_aa files are generated in analyze_structure function
     if "proteome_aa" in config_settings["save_files"]:
         proteome_aa = True
     else:
         proteome_aa = False
 
-    output_files = {"hits_fasta": hits_fasta, "hits_aa": hits_aa, "proteome_aa": proteome_aa}
+    output_files = {"hits_fasta": hits_fasta_fname, "hits_aa": hits_aa_fname, "proteome_aa": proteome_aa}
+    bool_output_files = {key:(True if value else False) for key,value in output_files.items()}
 
     ### read in files and process different formats ###
     if os.path.isdir(output_path) == False:
@@ -232,14 +267,28 @@ def main(config_settings):
     file_total = len(file_list)
     # we will sort the file list so that protein fragments are together,
     # but they won't be in the perfect order because of alphabetic sorting.
-    for file in sorted(file_list):
-        print("Mining file " + file + ": "+ str(file_number) + " of " + str(file_total) + "...")
-        analyze_structure(file, config_settings, target_parameters, output_files)
-        file_number = file_number + 1
+    #for file in sorted(file_list):
+    #    print("Mining file " + file + ": "+ str(file_number) + " of " + str(file_total) + "...")
+    #    analyze_structure(file, config_settings, target_parameters, output_files)
+    #    file_number = file_number + 1
+    manager = mp.Manager()
+    q = manager.Queue()
+    p = mp.Pool(int(config_settings["processes"]) + 1) # This value needs to be > 1, slurm ensures it won't use too many cpus
 
-    #close the file objects
-    hits_fasta.close()
-    hits_aa.close()
+    watcher = p.apply_async(listener, (q,output_files))
+
+    jobs = []
+    for file in sorted(file_list):
+      job = p.apply_async(runner, (file, config_settings, target_parameters, bool_output_files, q))
+      jobs.append(job)
+
+    for i, job in enumerate(jobs):
+      print("Mining file " + str(i + 1) + " of " + str(file_total) + "...")
+      job.get()
+
+    q.put("done")
+    p.close()
+    p.join()
 
 if __name__ == "__main__":
     main(config_settings)

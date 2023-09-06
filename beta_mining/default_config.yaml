@@ -13,6 +13,9 @@ per_residue_output: True
 # Filepath to a custom .json file with definitions of structures. Use `Null` if you wish to use the default (`structure_dictionary.json`) included in the beta_mining module.
 custom_json: Null
 
+#number of threads to run beta_mining with
+processes: 3
+
 # units in which to calculate dihedral angles. Enter "radians" or "degrees"
 units: degrees
 
