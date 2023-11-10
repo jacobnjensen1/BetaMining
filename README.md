@@ -160,6 +160,9 @@ Kabsch, Wolfgang and Christian Sander [Dictionary of protein secondary structure
 Daniel Ting, Guoli Wang, Maxim Shapovalov, Rajib Mitra, Michael I. Jordan, Roland L. Dunbrack, Jr. [Neighbor-dependent Ramachandran probability distributions of amino acids developed from a hierarchical Dirichlet process model.](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1000763) *PLOS Comp. Biol.* (April 2010).
 
 #### backbone twist calculations and values
+
+Note: twist is no longer a default parameter in `structure_dictionary.json`
+
 Cyrus Chothia, Conformation of twisted β-pleated sheets in proteins, *Journal of Molecular Biology,* Volume 75, Issue 2, **1973**, Pages 295-302, ISSN 0022-2836,
 https://doi.org/10.1016/0022-2836(73)90022-3.
 

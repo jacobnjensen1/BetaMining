@@ -2,10 +2,10 @@ name: beta_mining_env
 
 dependencies:
   - python
-  - anaconda::pandas
-  - anaconda::scikit-learn
+  - pandas
+  - scikit-learn
   - conda-forge::prody
   - conda-forge::pyyaml
-  - anaconda::numpy
+  - numpy
   - conda-forge::biopandas
   - conda-forge::biopython

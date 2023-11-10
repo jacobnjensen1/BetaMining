@@ -4,12 +4,12 @@
 # "BetaMining" package to analyze .pdb files of interest.
 import pandas as pd
 
-from biopandas.pdb import PandasPdb
-import datetime
+#from biopandas.pdb import PandasPdb
+#import datetime
 import os
 import re
 import json
-import glob
+from glob import glob
 #from pathlib import Path
 import importlib.resources
 import multiprocessing as mp
@@ -261,7 +261,7 @@ def main(config_settings):
     ### read in files and process different formats ###
     if os.path.isdir(output_path) == False:
         os.mkdir(output_path)
-    file_list = glob.glob(input_path + "/**.pdb*", recursive = True)
+    file_list = glob(input_path + "/**.pdb*", recursive = True)
     #print(file_list)
     file_number = 1
     file_total = len(file_list)

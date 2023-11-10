@@ -12,8 +12,8 @@ p = PDBParser(PERMISSIVE=1)
 from sklearn.metrics import pairwise_distances
 
 from biopandas.pdb import PandasPdb
-import sys
-import json
+from sys import exit
+#import json
 import gzip
 from collections import defaultdict, deque
 import os
@@ -120,7 +120,7 @@ def contacts_df(pdb_dataframe, features_json, residue_features_dictionary, targe
   residue_numbers_list = coords_df["residue_number"].values.tolist()
   distance_matrix = pairwise_distances(coords_df.loc[:,["x_coord", "y_coord", "z_coord"]], metric = "euclidean")
 
-  np.set_printoptions(threshold=sys.maxsize)
+  #np.set_printoptions(threshold=sys.maxsize)
   #print(distance_matrix)
   
   column_names = ["residue_number"]
@@ -312,10 +312,9 @@ def handle_out_of_plane(model, options, filename, out_path, thread_id):
   tempDSSPFileBase = f"{out_path}temp_{thread_id}"
   #print(tempDSSPFileBase)
   
-
   #This is included just in case it happens. I don't think it will, but I don't entirely trust current_process()
   if os.path.isfile(tempDSSPFileBase + ".dssp"):
-    sys.exit("\n\nTemp files overlapped - the thread_id method needs to be changed.\n\n")
+    exit("\n\nTemp files overlapped - the thread_id method needs to be changed.\n\n")
 
   if not filename.endswith(".gz"):
     prody.execDSSP(filename, tempDSSPFileBase)

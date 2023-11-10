@@ -4,11 +4,11 @@
 # to analyze and log processing of amino acid PDB structure files.
 
 import os
-import sys
+from sys import exit
 #sys.path.insert(0,"../")
 #sys.path.insert(0, "../beta_mining/")
-import pandas as pd
-import pkgutil
+#import pandas as pd
+#import pkgutil
 
 import importlib.resources
 import yaml
@@ -27,10 +27,10 @@ def handler(signal_number, frame):
     """Shuts down the script via `Ctrl-C` or `Ctrl-Z` entered on the command line."""
     if signal_number == signal.SIGINT:
         print("Termination requested, aborting script.")
-        sys.exit(0)
+        exit(0)
     elif signal_number == signal.SIGTSTP:
         print("Suspend not supported, aborting script.")
-        sys.exit(0)
+        exit(0)
 
 def generate_yaml(target_directory = os.getcwd(), prefix = "generated_"):
     """Creates a yaml config file in the current working directory.
@@ -62,13 +62,13 @@ def main():
         path = os.getcwd()
         generate_yaml()
         print("Default config YAML generated and saved to: '{}'. Exiting.".format(path))
-        sys.exit(0)
+        exit(0)
 
     # If a filepath is specified, generate default YAML and run the full program.
     #elif args.filepath != "no_input":
     #    if args.config != "default_config.yaml":
     #        print("Filepath default mode and YAML are mutually exclusive. Please use one or the other. Exiting.")
-    #        sys.exit(0)
+    #        exit(0)
     #    filepath = args.filepath
 
     #    generate_yaml(filepath, timestamp)
@@ -95,7 +95,7 @@ def main():
             config.close()
     else:
         print("Unable to open config file, exiting.")
-        sys.exit(0)
+        exit(0)
 
     # Create output directory if it doesn't exist
     if os.path.isdir(settings["output_filepath"]) == False:
